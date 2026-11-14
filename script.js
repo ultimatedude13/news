@@ -1,5 +1,11 @@
-const STORAGE_KEY = "my-personal-news-posts";
-const ADMIN_PASSWORD = "change-me"; // <-- set your own password here
+const supabaseUrl = "https://fszcioyyonupalpzyspk.supabase.co";
+const supabaseKey = "sb_publishable_LcWzUCvGDxFHFX1Y4Y1pkw_DNR4Kdq1";
+const ownerUserId = "4556a626-a888-44fe-ae4e-c876296dad09";
+
+const supabaseClient = window.supabase.createClient(
+  supabaseUrl,
+  supabaseKey
+);
 
 const loginBtn = document.getElementById("loginBtn");
 const logoutBtn = document.getElementById("logoutBtn");
@@ -11,64 +17,8 @@ const postContent = document.getElementById("postContent");
 
 let isLoggedIn = false;
 
-function getPosts() {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    return saved ? JSON.parse(saved) : [];
-  } catch {
-    return [];
-  }
-}
-
-function savePosts(posts) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(posts));
-}
-
-function formatDate(dateString) {
-  const date = new Date(dateString);
-  return date.toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
-
-function renderPosts() {
-  const posts = getPosts().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-
-  if (!posts.length) {
-    feed.innerHTML = `
-      <div class="empty-state">
-        No posts yet. Log in as admin and share your first update.
-      </div>
-    `;
-    return;
-  }
-
-  feed.innerHTML = posts.map(post => `
-    <article class="news-item">
-      <div class="news-item-header">
-        <div>
-          <h3>${escapeHtml(post.title)}</h3>
-          <div class="meta">
-            <span>By You</span>
-            <span>•</span>
-            <span>${formatDate(post.createdAt)}</span>
-          </div>
-        </div>
-
-        ${isLoggedIn ? `
-          <button class="delete-btn" data-id="${post.id}">Delete</button>
-        ` : ""}
-      </div>
-
-      <p>${escapeHtml(post.content).replace(/\n/g, "<br>")}</p>
-    </article>
-  `).join("");
-}
-
 function escapeHtml(value) {
-  return value
+  return String(value)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
@@ -76,32 +26,113 @@ function escapeHtml(value) {
     .replace(/'/g, "&#039;");
 }
 
-function login() {
-  const password = prompt("Enter admin password:");
-  if (password === ADMIN_PASSWORD) {
-    isLoggedIn = true;
-    adminPanel.classList.remove("hidden");
-    logoutBtn.classList.remove("hidden");
-    loginBtn.classList.add("hidden");
-    renderPosts();
-  } else if (password !== null) {
-    alert("Incorrect password.");
-  }
+function formatDate(dateString) {
+  return new Date(dateString).toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
 }
 
-function logout() {
-  isLoggedIn = false;
-  adminPanel.classList.add("hidden");
-  logoutBtn.classList.add("hidden");
-  loginBtn.classList.remove("hidden");
-  renderPosts();
+function updateLoginUI(session) {
+  isLoggedIn = session?.user?.id === ownerUserId;
+
+  adminPanel.classList.toggle("hidden", !isLoggedIn);
+  logoutBtn.classList.toggle("hidden", !isLoggedIn);
+  loginBtn.classList.toggle("hidden", isLoggedIn);
+}
+
+async function refreshPosts() {
+  const { data: posts, error } = await supabaseClient
+    .from("posts")
+    .select("id, title, content, created_at")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("Could not load posts:", error);
+    feed.innerHTML = `
+      <div class="empty-state">
+        Could not load posts. Please try again later.
+      </div>
+    `;
+    return;
+  }
+
+  if (!posts || posts.length === 0) {
+    feed.innerHTML = `
+      <div class="empty-state">
+        No posts yet.
+      </div>
+    `;
+    return;
+  }
+
+  feed.innerHTML = posts.map((post) => `
+    <article class="news-item">
+      <div class="news-item-header">
+        <div>
+          <h3>${escapeHtml(post.title)}</h3>
+          <div class="meta">
+            <span>By You</span>
+            <span>•</span>
+            <span>${formatDate(post.created_at)}</span>
+          </div>
+        </div>
+
+        ${isLoggedIn
+          ? `<button class="delete-btn" data-id="${escapeHtml(post.id)}">Delete</button>`
+          : ""}
+      </div>
+
+      <p>${escapeHtml(post.content).replace(/\n/g, "<br>")}</p>
+    </article>
+  `).join("");
+}
+
+async function login() {
+  const email = prompt("Enter your Supabase email:");
+  if (!email) return;
+
+  const password = prompt("Enter your Supabase password:");
+  if (!password) return;
+
+  const { data, error } = await supabaseClient.auth.signInWithPassword({
+    email,
+    password,
+  });
+
+  if (error) {
+    alert(error.message);
+    return;
+  }
+
+  if (data.user?.id !== ownerUserId) {
+    await supabaseClient.auth.signOut();
+    alert("That account is not authorized to manage this site.");
+    return;
+  }
+
+  updateLoginUI(data);
+  await refreshPosts();
+}
+
+async function logout() {
+  const { error } = await supabaseClient.auth.signOut();
+
+  if (error) {
+    alert(error.message);
+    return;
+  }
+
+  updateLoginUI(null);
+  await refreshPosts();
 }
 
 loginBtn.addEventListener("click", login);
 logoutBtn.addEventListener("click", logout);
 
-postForm.addEventListener("submit", (e) => {
-  e.preventDefault();
+postForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
 
   if (!isLoggedIn) {
     alert("Please log in first.");
@@ -116,28 +147,58 @@ postForm.addEventListener("submit", (e) => {
     return;
   }
 
-  const posts = getPosts();
-  posts.push({
-    id: Date.now().toString(),
-    title,
-    content,
-    createdAt: new Date().toISOString()
-  });
+  const submitButton = postForm.querySelector('button[type="submit"]');
+  submitButton.disabled = true;
 
-  savePosts(posts);
+  const { error } = await supabaseClient
+    .from("posts")
+    .insert([{ title, content }]);
+
+  submitButton.disabled = false;
+
+  if (error) {
+    alert(error.message);
+    return;
+  }
+
   postForm.reset();
-  renderPosts();
+  await refreshPosts();
 });
 
-feed.addEventListener("click", (e) => {
-  const deleteBtn = e.target.closest(".delete-btn");
-  if (!deleteBtn) return;
+feed.addEventListener("click", async (event) => {
+  const deleteButton = event.target.closest(".delete-btn");
+  if (!deleteButton || !isLoggedIn) return;
 
-  const id = deleteBtn.dataset.id;
-  const posts = getPosts().filter(post => post.id !== id);
+  if (!confirm("Delete this post?")) return;
 
-  savePosts(posts);
-  renderPosts();
+  const { error } = await supabaseClient
+    .from("posts")
+    .delete()
+    .eq("id", deleteButton.dataset.id);
+
+  if (error) {
+    alert(error.message);
+    return;
+  }
+
+  await refreshPosts();
 });
 
-renderPosts();
+supabaseClient.auth.onAuthStateChange((_event, session) => {
+  updateLoginUI(session);
+});
+
+async function initialize() {
+  const { data, error } = await supabaseClient.auth.getSession();
+
+  if (error) {
+    console.error("Could not check login status:", error);
+    updateLoginUI(null);
+  } else {
+    updateLoginUI(data.session);
+  }
+
+  await refreshPosts();
+}
+
+initialize();
