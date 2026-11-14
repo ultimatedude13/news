@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>My Personal News</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Private feed</p>
+          <h1>My Personal News</h1>
+        </div>
+
+        <div class="admin-tools">
+          <button id="loginBtn" class="secondary-btn">Admin login</button>
+          <button id="logoutBtn" class="ghost-btn hidden">Logout</button>
+        </div>
+      </header>
+
+      <section id="adminPanel" class="admin-panel hidden">
+        <h2>New post</h2>
+
+        <form id="postForm">
+          <div class="input-row">
+            <label>
+              Title
+              <input id="postTitle" type="text" maxlength="80" placeholder="Example: Weekend plan" required />
+            </label>
+          </div>
+
+          <div class="input-row">
+            <label>
+              Story
+              <textarea id="postContent" rows="6" maxlength="1000" placeholder="Write what happened..." required></textarea>
+            </label>
+          </div>
+
+          <div class="form-actions">
+            <button type="submit" class="primary-btn">Publish</button>
+          </div>
+        </form>
+      </section>
+
+      <main>
+        <div id="feed" class="feed"></div>
+      </main>
+    </div>
+
+    <script src="script.js"></script>
+  </body>
+</html>
